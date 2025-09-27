@@ -40,14 +40,14 @@ namespace kanjiCraft {
         return true
     }
 
-    // ---- "WxH:HEX..." → ビット配列（HEXは必要桁数のみ検証）----
+    // ---- "WxH:HEX..." → ビット配列（16進は必要桁数のみ検証）----
     function parseHeader(code: string): { w: number, h: number, bits: number[][] } {
         if (!code || code.length < 5) { player.say("コードが空です"); return null }
 
         let idxX = code.indexOf("x"); if (idxX < 0) idxX = code.indexOf("X")
         const idxColon = code.indexOf(":")
         if (idxX <= 0 || idxColon < 0 || idxColon <= idxX + 1) {
-            player.say("形式は 16x16:HEX... のようにしてください")
+            player.say("形式は 16x16:12345... のようにしてください")
             return null
         }
 
@@ -60,9 +60,9 @@ namespace kanjiCraft {
         const need = Math.idiv(w * h + 3, 4)               // 必要なHEX桁数のみを固定長で取得
         const hexStart = idxColon + 1
         const hexEnd = hexStart + need
-        if (hexEnd > code.length) { player.say("HEXが不足しています（必要 " + need + " 桁）"); return null }
+        if (hexEnd > code.length) { player.say("桁数不足しています（必要 " + need + " 桁）"); return null }
         const hex = slice_(code, hexStart, hexEnd)
-        if (!isHexString(hex)) { player.say("HEX以外の文字が混在しています"); return null }
+        if (!isHexString(hex)) { player.say("16進以外の文字が混在しています"); return null }
 
         const totalBits = w * h
         const bits: number[][] = []
