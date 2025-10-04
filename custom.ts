@@ -1,4 +1,4 @@
-//% color=#3D7EFF weight=80 icon="\uf031" block="漢字クラフト"
+///% color=#3D7EFF weight=80 icon="\uf031" block="漢字クラフト"
 namespace kanjiCraft {
 
     const TEXT_BLOCK = IRON_BLOCK      // 文字ブロック（必要なら変更）
@@ -57,7 +57,7 @@ namespace kanjiCraft {
         const w = parseInt(wStr), h = parseInt(hStr)
         if (w <= 0 || h <= 0 || w > 64 || h > 64) { player.say("サイズは1〜64にしてください"); return null }
 
-        const need = Math.idiv(w * h + 3, 4)               // 必要なHEX桁数のみを固定長で取得
+        const need = Math.idiv(w * h + 3, 4)               // 必要なHEX桁数のみ取得
         const hexStart = idxColon + 1
         const hexEnd = hexStart + need
         if (hexEnd > code.length) { player.say("桁数不足しています（必要 " + need + " 桁）"); return null }
@@ -107,20 +107,6 @@ namespace kanjiCraft {
             agent.setSlot(1)
         }
     }
-    // 壁（Z+方向に厚み）の手動Keep（空気だけに配置）
-    function fillKeepWall(front: Position, thickness: number) {
-        for (let dz = 0; dz < thickness; dz++) {
-            const p = positions.add(front, positions.create(0, 0, dz))
-            if (isAir(p)) blocks.place(TEXT_BLOCK, p)
-        }
-    }
-    // 床（Y+方向に厚み）の手動Keep（空気だけに配置）
-    function fillKeepFloor(top: Position, thickness: number) {
-        for (let dy = 0; dy < thickness; dy++) {
-            const p = positions.add(top, positions.create(0, dy, 0))
-            if (isAir(p)) blocks.place(TEXT_BLOCK, p)
-        }
-    }
 
     // ---- 連結 "16x16:HEX64" を左から抽出（非HEX混入のエントリは破棄）----
     function parseMany16(codes: string): { w: number, h: number, bits: number[][] }[] {
@@ -155,16 +141,18 @@ namespace kanjiCraft {
         return out
     }
 
-    // ---- 1) エージェントに置かせる（厚み=1固定・複数16x16対応）----
+    // 1) エージェントに…ブロック
     //% blockId=kc_write_agent
     //% block="エージェントに 文字 %code を %plane で %origin から書いてもらう"
+    //% plane.defl=Plane.Floor
     //% weight=90 blockNamespace="kanjiCraft"
     //% origin.shadow=minecraftCreateWorldPosition
-    export function agentWrite(code: string, plane: Plane, origin: Position) {
-        // ブロックから null が来ても安全に
-        if (!origin) origin = world(0, 0, 0)
+    export function agentWriteHere(code: string, plane: Plane) {
+        // エージェントの現在位置を原点として採用
+        const agentPos = agent.getPosition()
+        if (!agentPos) { player.say("エージェントの位置が取得できません"); return }
 
-        // まず連結16x16を抽出。無ければ単一として処理
+        // 連結16x16を抽出。なければ単一として処理
         const many = parseMany16(code)
         if (many.length === 0) {
             const bmp0 = parseHeader(code)
@@ -172,21 +160,21 @@ namespace kanjiCraft {
             many.push(bmp0)
         }
 
-        // スロット1固定で初期投入（以降は定期補充）
-        const spawn = positions.add(origin, positions.create(0, 1, 1))
-        agent.teleport(spawn, plane === Plane.Wall ? NORTH : SOUTH)
+        // 在庫初期投入（以降は定期補充）
         agent.setItem(TEXT_BLOCK, 64, 1)
         agent.setSlot(1)
 
         let placed = 0
         let offsetX = 0
+
         if (plane === Plane.Wall) {
+            // 壁：原点は「エージェントのいるZ面」
             for (let gi = 0; gi < many.length; gi++) {
                 const bmp = many[gi]
                 for (let y = 0; y < bmp.h; y++) {
                     for (let x = 0; x < bmp.w; x++) {
                         if (!bmp.bits[y][x]) continue
-                        const target = posAtWall(origin, offsetX + x, y)
+                        const target = posAtWall(agentPos, offsetX + x, y)
                         if (PLACE_ONLY_AIR && !isAir(target)) continue
                         const stand = positions.add(target, positions.create(0, 0, 1))
                         agent.teleport(stand, NORTH)
@@ -195,82 +183,24 @@ namespace kanjiCraft {
                         placed++
                     }
                 }
-                offsetX += bmp.w + 1  // 1ブロックの字間（+Xへ進む）
+                offsetX += bmp.w + 1
             }
-        } else { // Floor（ワールド基準：左→右=+X, 上→下=+Z, 原点は左上）
+        } else { // Floor
+            // 床：原点は「エージェントがいるXZ上面」
             for (let gi = 0; gi < many.length; gi++) {
                 const bmp = many[gi]
                 for (let z = 0; z < bmp.h; z++) {
                     for (let x = 0; x < bmp.w; x++) {
                         if (!bmp.bits[z][x]) continue
-                        const fx = offsetX + x   // 左→右は +X
-                        const fz = z            // 上→下は +Z
-                        const target = posAtFloor(origin, fx, fz)
+                        const fx = offsetX + x
+                        const fz = z
+                        const target = posAtFloor(agentPos, fx, fz)
                         if (PLACE_ONLY_AIR && !isAir(target)) continue
                         const stand = positions.add(target, positions.create(0, 1, 0))
-                        agent.teleport(stand, SOUTH)  // 南(+Z)側から真下に置く
+                        agent.teleport(stand, SOUTH)
                         ensureAgentStockIfNeeded(placed)
                         agent.place(DOWN)
                         placed++
-                    }
-                }
-                offsetX += bmp.w + 1          // 次の字へ +X に1空ける
-            }
-        }
-    }
-
-    // ---- 2) ビルダー高速配置（厚み可変・複数16x16対応）----
-    //% blockId=kc_place_builder
-    //% hidden=1
-    //% block="文字 %code を %plane で %origin から 厚み %thickness で配置"
-    //% thickness.min=1 thickness.max=32
-    //% thickness.shadow=math_number
-    //% thickness.defl=1
-    //% weight=80 blockNamespace="kanjiCraft"
-    //% origin.shadow=minecraftCreateWorldPosition
-    export function builderPlace(code: string, plane: Plane, origin: Position, thickness: number) {
-        // ブロックから null / 0 が来ても安全に
-        if (!origin) origin = world(0, 0, 0)
-        if (thickness < 1) thickness = 1
-
-        const many = parseMany16(code)
-        if (many.length === 0) {
-            const bmp0 = parseHeader(code)
-            if (!bmp0) return
-            many.push(bmp0)
-        }
-
-        let offsetX = 0
-        if (plane === Plane.Wall) {
-            // 壁は +Z 方向に厚みを伸ばす（文字面がZ=0として）
-            for (let gi = 0; gi < many.length; gi++) {
-                const bmp = many[gi]
-                for (let y = 0; y < bmp.h; y++) {
-                    for (let x = 0; x < bmp.w; x++) {
-                        if (!bmp.bits[y][x]) continue
-                        const front = posAtWall(origin, offsetX + x, y) // Z=0
-                        if (PLACE_ONLY_AIR) fillKeepWall(front, thickness)
-                        else {
-                            const back = positions.add(front, positions.create(0, 0, thickness - 1))
-                            blocks.fill(TEXT_BLOCK, front, back, FillOperation.Replace)
-                        }
-                    }
-                }
-                offsetX += bmp.w + 1
-            }
-        } else { // Floor（ワールド基準：左→右=+X, 上→下=+Z, 原点は左上）
-            // 床は +Y 方向に厚みを伸ばす（面はXZ、原点は上面）
-            for (let gi = 0; gi < many.length; gi++) {
-                const bmp = many[gi]
-                for (let z = 0; z < bmp.h; z++) {
-                    for (let x = 0; x < bmp.w; x++) {
-                        if (!bmp.bits[z][x]) continue
-                        const top = posAtFloor(origin, offsetX + x, z) // Y=0（+X/+Zで配置）
-                        if (PLACE_ONLY_AIR) fillKeepFloor(top, thickness)
-                        else {
-                            const bottom = positions.add(top, positions.create(0, thickness - 1, 0))
-                            blocks.fill(TEXT_BLOCK, top, bottom, FillOperation.Replace)
-                        }
                     }
                 }
                 offsetX += bmp.w + 1
