@@ -143,7 +143,7 @@ namespace kanjiCraft {
 
     // 1) エージェントに…ブロック
     //% blockId=kc_write_agent
-    //% block="エージェントに 文字 %code を %plane で %origin から書いてもらう"
+    //% block="エージェントに 文字 %code を %plane に書いてもらう"
     //% plane.defl=Plane.Floor
     //% weight=90 blockNamespace="kanjiCraft"
     //% origin.shadow=minecraftCreateWorldPosition
