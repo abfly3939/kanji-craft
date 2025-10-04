@@ -173,6 +173,8 @@ namespace kanjiCraft {
         }
 
         // スロット1固定で初期投入（以降は定期補充）
+        const spawn = positions.add(origin, positions.create(0, 1, 1))
+        agent.teleport(spawn, plane === Plane.Wall ? NORTH : SOUTH)
         agent.setItem(TEXT_BLOCK, 64, 1)
         agent.setSlot(1)
 
@@ -219,6 +221,7 @@ namespace kanjiCraft {
 
     // ---- 2) ビルダー高速配置（厚み可変・複数16x16対応）----
     //% blockId=kc_place_builder
+    //% hidden=1
     //% block="文字 %code を %plane で %origin から 厚み %thickness で配置"
     //% thickness.min=1 thickness.max=32
     //% thickness.shadow=math_number
