@@ -142,17 +142,16 @@ namespace kanjiCraft {
     }
 
     // 1) エージェントに…ブロック
-    //% blockId=kc_write_agent
-    //% block="エージェントに 文字 %code を %plane に書いてもらう"
+    //% blockId=kc_write_agent_here
+    //% block="エージェントに 文字 %code を %plane に 今いる場所から書いてもらう"
     //% plane.defl=Plane.Floor
     //% weight=90 blockNamespace="kanjiCraft"
-    //% origin.shadow=minecraftCreateWorldPosition
     export function agentWriteHere(code: string, plane: Plane) {
-        // エージェントの現在位置を原点として採用
-        const agentPos = agent.getPosition()
-        if (!agentPos) { player.say("エージェントの位置が取得できません"); return }
+        // 1) 原点＝エージェントの今いる位置
+        const origin = agent.getPosition()
+        if (!origin) { player.say("エージェントの位置が取得できません"); return }
 
-        // 連結16x16を抽出。なければ単一として処理
+        // 2) 連結16x16の抽出（例：複数行にまたがる "16x16:... 16x16:..." に対応）
         const many = parseMany16(code)
         if (many.length === 0) {
             const bmp0 = parseHeader(code)
@@ -160,7 +159,7 @@ namespace kanjiCraft {
             many.push(bmp0)
         }
 
-        // 在庫初期投入（以降は定期補充）
+        // 3) 在庫初期投入（以降は ensureAgentStockIfNeeded に任せる）
         agent.setItem(TEXT_BLOCK, 64, 1)
         agent.setSlot(1)
 
@@ -168,13 +167,13 @@ namespace kanjiCraft {
         let offsetX = 0
 
         if (plane === Plane.Wall) {
-            // 壁：原点は「エージェントのいるZ面」
+            // 壁：原点は左上、右へ+X、見た目下方向は -Y を写像解除
             for (let gi = 0; gi < many.length; gi++) {
                 const bmp = many[gi]
                 for (let y = 0; y < bmp.h; y++) {
                     for (let x = 0; x < bmp.w; x++) {
                         if (!bmp.bits[y][x]) continue
-                        const target = posAtWall(agentPos, offsetX + x, y)
+                        const target = posAtWall(origin, offsetX + x, y)
                         if (PLACE_ONLY_AIR && !isAir(target)) continue
                         const stand = positions.add(target, positions.create(0, 0, 1))
                         agent.teleport(stand, NORTH)
@@ -183,18 +182,16 @@ namespace kanjiCraft {
                         placed++
                     }
                 }
-                offsetX += bmp.w + 1
+                offsetX += bmp.w + 1   // ← 字間1で横に並べる
             }
-        } else { // Floor
-            // 床：原点は「エージェントがいるXZ上面」
+        } else {
+            // 床：原点は左上、右へ+X、下へ+Z
             for (let gi = 0; gi < many.length; gi++) {
                 const bmp = many[gi]
                 for (let z = 0; z < bmp.h; z++) {
                     for (let x = 0; x < bmp.w; x++) {
                         if (!bmp.bits[z][x]) continue
-                        const fx = offsetX + x
-                        const fz = z
-                        const target = posAtFloor(agentPos, fx, fz)
+                        const target = posAtFloor(origin, offsetX + x, z)
                         if (PLACE_ONLY_AIR && !isAir(target)) continue
                         const stand = positions.add(target, positions.create(0, 1, 0))
                         agent.teleport(stand, SOUTH)
@@ -203,7 +200,7 @@ namespace kanjiCraft {
                         placed++
                     }
                 }
-                offsetX += bmp.w + 1
+                offsetX += bmp.w + 1   // ← 字間1で横に並べる
             }
         }
     }
