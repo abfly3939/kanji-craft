@@ -8,10 +8,10 @@ namespace kanjiCraft {
     const REFILL_INTERVAL = 32         // エージェントの定期補充間隔（スロット1を定期補充）
 
     export enum Plane {
-        //% block="壁（X-Y 平面）"
-        Wall = 0,
-        //% block="床（X-Z 平面）"
-        Floor = 1
+        //% block="床"
+        Floor = 0,
+        //% block="壁"
+        Wall = 1
     }
 
     // ---- 文字列ユーティリティ（TSサブセット対応）----
